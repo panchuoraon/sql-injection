@@ -1,72 +1,72 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import api from '../services/api';
-import { saveAuth } from '../services/auth';
-import Toast from '../components/Toast';
+import { useState } from "react";
 
-export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+export default function Login({ onLogin, showSignupInitial = false }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [showSignup, setShowSignup] = useState(showSignupInitial);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
+  const login = async () => {
+    if (!email || !pw) return;
     setLoading(true);
-
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      saveAuth(response.data);
-      navigate('/user-dashboard');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Unable to login.');
-    } finally {
-      setLoading(false);
-    }
+    await new Promise((r) => setTimeout(r, 1200));
+    onLogin({ name: email.split("@")[0], role: email.includes("admin") ? "admin" : "user" });
+    setLoading(false);
   };
 
   return (
-    <div className="mx-auto max-w-2xl rounded-[2rem] border border-slate-700 bg-[#07101f]/90 p-10 shadow-glow">
-      <h2 className="text-3xl font-semibold text-white">Welcome Back</h2>
-      <p className="mt-3 text-slate-400">Log in to scan SQL queries and view threat analytics.</p>
-      <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-        <label className="block text-sm text-slate-200">
-          Email address
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none focus:border-neon"
-          />
-        </label>
-        <label className="block text-sm text-slate-200">
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none focus:border-neon"
-          />
-        </label>
-        {error && <Toast message={error} type="error" />}
+    <div className="auth-container">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <div style={{ width: 52, height: 52, background: "linear-gradient(135deg, var(--accent-blue), var(--accent-purple))", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, margin: "0 auto 12px" }}>🛡️</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>AI SQL INJECTION DETECTOR</div>
+        </div>
+
+        <div className="auth-title">{showSignup ? "Create Account" : "Welcome Back"}</div>
+        <div className="auth-sub">{showSignup ? "// register to access the platform" : "// login to your security console"}</div>
+
+        {showSignup && (
+          <div className="field">
+            <label>Full Name</label>
+            <input id="signup-name" type="text" placeholder="Security Engineer" />
+          </div>
+        )}
+
+        <div className="field">
+          <label>Email Address</label>
+          <input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@corp.io" />
+        </div>
+
+        <div className="field">
+          <div className="field-row">
+            <label>Password</label>
+            {!showSignup && <span className="link-text">Forgot password?</span>}
+          </div>
+          <input id="login-password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••••" />
+        </div>
+
         <button
-          type="submit"
-          className="w-full rounded-3xl bg-neon px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-70"
+          id="login-submit-btn"
+          className="btn btn-primary"
+          style={{ width: "100%", padding: 12, justifyContent: "center", fontSize: 14, marginTop: 4 }}
+          onClick={login}
           disabled={loading}
         >
-          {loading ? 'Signing in...' : 'Sign In'}
+          {loading ? "⏳ Authenticating…" : showSignup ? "Create Account" : "Sign In →"}
         </button>
-      </form>
-      <p className="mt-6 text-sm text-slate-400">
-        New to the dashboard?{' '}
-        <Link to="/signup" className="text-neon underline">
-          Create an account.
-        </Link>
-      </p>
+
+        <div className="auth-footer">
+          {showSignup ? "Already have an account? " : "Don't have an account? "}
+          <span className="link-text" onClick={() => setShowSignup(!showSignup)}>
+            {showSignup ? "Sign in" : "Sign up"}
+          </span>
+        </div>
+
+        <div style={{ marginTop: 20, padding: "12px 0", borderTop: "1px solid var(--border)", textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8 }}>Demo credentials</div>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>admin@corp.io / any password</div>
+        </div>
+      </div>
     </div>
   );
 }

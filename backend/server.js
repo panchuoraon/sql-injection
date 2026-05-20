@@ -39,7 +39,16 @@ connectDatabase().then(async () => {
     console.log(`Default admin created: ${adminEmail}`);
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+  });
+
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Stop the process using it or set a different PORT in your environment.`);
+      process.exit(1);
+    }
+    console.error('Server error:', error);
+    process.exit(1);
   });
 });

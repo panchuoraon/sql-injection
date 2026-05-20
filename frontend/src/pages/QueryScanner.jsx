@@ -1,79 +1,177 @@
-import { useState } from 'react';
-import api from '../services/api';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { useState } from "react";
+import { SeverityBadge, ConfidenceBar } from "../components/UI";
+import { detectSQLInjection } from "../utils/detection";
+import { SAMPLE_QUERIES } from "../utils/hooks";
 
-export default function QueryScanner() {
-  const [query, setQuery] = useState('');
-  const [result, setResult] = useState(null);
+export default function QueryScanner({ toast }) {
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
 
-  const handleScan = async (e) => {
-    e.preventDefault();
-    setError('');
-    setResult(null);
+  const scan = async () => {
+    if (!query.trim()) { toast.add("Enter a SQL query to scan", "error"); return; }
     setLoading(true);
-
+    setResult(null);
     try {
-      const response = await api.post('/scan/query', { query });
-      // backend returns { query, result }
-      setResult(response.data.result);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Unable to scan query.');
-    } finally {
-      setLoading(false);
+      const r = await detectSQLInjection(query);
+      setResult(r);
+      setHistory((h) => [
+        { query: query.substring(0, 60) + "...", severity: r.severity, ts: new Date().toLocaleTimeString(), confidence: r.confidence },
+        ...h.slice(0, 9),
+      ]);
+      toast.add(r.is_malicious ? "⚠️ Injection detected!" : "✅ Query is safe", r.is_malicious ? "error" : "success");
+    } catch {
+      toast.add("Scan failed — check API connection", "error");
     }
+    setLoading(false);
   };
 
+  const getResultClass = () => {
+    if (!result) return "";
+    if (result.severity === "safe") return "safe";
+    if (["critical", "high"].includes(result.severity)) return "malicious";
+    return "warning";
+  };
+
+  const barColor = result
+    ? result.severity === "safe" ? "#00FF88" : result.severity === "critical" ? "#FF4466" : "#FFAA00"
+    : "#00D4FF";
+
   return (
-    <div className="space-y-8 pb-12">
-      <div className="card-panel rounded-[2rem] p-8">
-        <h2 className="text-3xl font-semibold text-white">SQL Query Scanner</h2>
-        <p className="mt-3 text-slate-400">Paste a SQL statement and scan it for injection patterns and suspicious behavior.</p>
-        <form onSubmit={handleScan} className="mt-8 space-y-6">
-          <textarea
-            rows="8"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            required
-            placeholder="SELECT * FROM users WHERE username = 'admin' OR 1=1; --"
-            className="w-full rounded-3xl border border-slate-700 bg-slate-950/80 px-4 py-4 text-slate-100 outline-none focus:border-neon"
-          />
-          <div className="flex flex-wrap gap-4">
-            <button type="submit" className="rounded-3xl bg-neon px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-70" disabled={loading}>
-              {loading ? 'Scanning...' : 'Scan Query'}
-            </button>
-            <button type="button" onClick={() => setQuery('')} className="rounded-3xl border border-slate-700 px-6 py-3 text-sm text-slate-200 transition hover:border-neon hover:text-neon">
-              Clear
-            </button>
-          </div>
-        </form>
+    <div className="page">
+      <div className="page-header">
+        <div className="page-title">SQL Query Scanner</div>
+        <div className="page-subtitle">// paste a query and run AI-powered injection analysis</div>
       </div>
-      {loading && <LoadingSpinner />}
-      {error && <div className="rounded-3xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">{error}</div>}
-      {result && (
-        <div className="card-panel rounded-[2rem] p-8">
-          <h3 className="text-2xl font-semibold text-white">Scan Results</h3>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl border border-slate-700 p-6">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Malicious</p>
-              <p className={`mt-3 text-4xl font-semibold ${result.malicious ? 'text-red-400' : 'text-emerald-400'}`}>{result.malicious ? 'YES' : 'NO'}</p>
+
+      <div className="scanner-container">
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">Query Input</div>
+            <textarea
+              id="scanner-textarea"
+              className="query-textarea"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Enter SQL query to analyze...\n\ne.g. SELECT * FROM users WHERE id = '1' OR '1'='1'`}
+              spellCheck={false}
+            />
+            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+              <button id="scan-btn" className="btn btn-primary" onClick={scan} disabled={loading}>
+                {loading ? "⏳ Scanning..." : "🔍 Analyze Query"}
+              </button>
+              <button id="clear-btn" className="btn btn-outline" onClick={() => { setQuery(""); setResult(null); }}>
+                Clear
+              </button>
             </div>
-            <div className="rounded-3xl border border-slate-700 p-6">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Severity</p>
-              <p className="mt-3 text-4xl font-semibold text-neon">{result.severity}</p>
-            </div>
-            <div className="rounded-3xl border border-slate-700 p-6">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Confidence</p>
-              <p className="mt-3 text-4xl font-semibold text-cyan-300">{result.confidence}</p>
-            </div>
-            <div className="rounded-3xl border border-slate-700 p-6">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Detected Patterns</p>
-              <p className="mt-3 text-slate-200">{result.patterns && result.patterns.length ? result.patterns.join(', ') : 'None'}</p>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8 }}>
+                Quick test payloads:
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {SAMPLE_QUERIES.slice(0, 4).map((q, i) => (
+                  <button key={i} className="btn btn-outline" style={{ fontSize: 10, padding: "4px 10px" }} onClick={() => setQuery(q)}>
+                    {q.substring(0, 28)}…
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
+          {history.length > 0 && (
+            <div className="card">
+              <div className="card-title">Scan History (this session)</div>
+              {history.map((h, i) => (
+                <div key={i} className="log-entry" style={{ cursor: "default" }}>
+                  <div className="log-query">{h.query}</div>
+                  <SeverityBadge sev={h.severity} />
+                  <div className="log-time">{h.ts}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        <div>
+          {loading && (
+            <div className="card">
+              <div className="loading-scan">
+                <div className="scan-ring" />
+                <div className="scan-text">🤖 Claude AI analyzing query…</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  Checking patterns · ML inference · Rule engine
+                </div>
+              </div>
+            </div>
+          )}
+
+          {result && !loading && (
+            <div className={`result-card ${getResultClass()}`}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div className={`result-label ${getResultClass()}`}>
+                  {result.is_malicious ? "⚠️ INJECTION DETECTED" : "✅ QUERY SAFE"}
+                </div>
+                <SeverityBadge sev={result.severity} />
+              </div>
+
+              <ConfidenceBar value={result.confidence} color={barColor} />
+
+              <div className="detail-grid">
+                <div className="detail-item">
+                  <div className="detail-key">Severity</div>
+                  <div className="detail-val" style={{ color: barColor }}>{result.severity?.toUpperCase()}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-key">Attack Types</div>
+                  <div className="detail-val" style={{ fontSize: 11 }}>{(result.attack_types || []).join(", ") || "None"}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-key">Detection Methods</div>
+                  <div className="detail-val" style={{ fontSize: 11 }}>{(result.detection_methods || []).slice(0, 2).join(", ") || "—"}</div>
+                </div>
+                <div className="detail-item">
+                  <div className="detail-key">Patterns Found</div>
+                  <div className="detail-val" style={{ fontSize: 11 }}>{(result.patterns_found || []).length || 0}</div>
+                </div>
+              </div>
+
+              {result.patterns_found?.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8 }}>PATTERNS DETECTED</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {result.patterns_found.map((p, i) => (
+                      <span key={i} style={{ background: "rgba(255,68,102,0.15)", color: "var(--accent-red)", borderRadius: 4, padding: "2px 8px", fontSize: 11, fontFamily: "var(--font-mono)" }}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.risk_analysis && (
+                <div style={{ marginTop: 14, background: "var(--bg0)", borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 6 }}>RISK ANALYSIS</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>{result.risk_analysis}</div>
+                </div>
+              )}
+
+              {result.suggested_fix && (
+                <div style={{ marginTop: 12, background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.15)", borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: "var(--accent-green)", fontFamily: "var(--font-mono)", marginBottom: 6 }}>💡 SUGGESTED FIX</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{result.suggested_fix}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!result && !loading && (
+            <div className="card" style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🛡️</div>
+              <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>Results will appear here</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: 8 }}>Enter a query and click Analyze</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
